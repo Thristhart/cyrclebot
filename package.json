@@ -1,0 +1,24 @@
+{
+  "name": "cyrclebot",
+  "version": "1.0.0",
+  "description": "A bot for mumble that plays audio on request",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Thristhart/cyrclebot.git"
+  },
+  "keywords": [
+    "bot",
+    "mumble",
+    "javascript"
+  ],
+  "author": "thristhart",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Thristhart/cyrclebot/issues"
+  },
+  "homepage": "https://github.com/Thristhart/cyrclebot"
+}

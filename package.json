@@ -20,5 +20,10 @@
   "bugs": {
     "url": "https://github.com/Thristhart/cyrclebot/issues"
   },
-  "homepage": "https://github.com/Thristhart/cyrclebot"
+  "homepage": "https://github.com/Thristhart/cyrclebot",
+  "dependencies": {
+    "mumble": "0.0.2",
+    "nconf": "^0.7.1",
+    "ytdl-core": "^0.2.4"
+  }
 }

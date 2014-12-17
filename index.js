@@ -29,7 +29,6 @@ mumble.connect( config.get("serverAddress"), options, function(error, connection
   // stream from the server
   var outputStream;
 
-  var Transformer;
   var MessageHandler;
   
   
@@ -38,8 +37,7 @@ mumble.connect( config.get("serverAddress"), options, function(error, connection
     console.log("Init success");
     inputStream = connection.inputStream();
     outputStream = connection.outputStream();
-    Transformer = require('./transformer')(connection);
-    MessageHandler = require('./messageHandler')(connection, Transformer, inputStream);
+    MessageHandler = require('./messageHandler')(connection, inputStream);
   });
   connection.on('protocol-in', function(data) {
     if(data.type != "Ping")

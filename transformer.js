@@ -19,7 +19,12 @@ module.exports = function(connection) {
     return newBuff;
   }
   function applyVolume(integer) {
-    return Math.round(integer / (20 * connection.volume / 100));
+    var val = Math.round(integer / (20 * (101 - connection.volume) / 100));
+    if(val > 32767)
+      val = 32767;
+    if(val < -32767)
+      val = -32767;
+    return val;
   }
   return Transformer;
 };

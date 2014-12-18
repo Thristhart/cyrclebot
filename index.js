@@ -35,7 +35,7 @@ mumble.connect( config.get("serverAddress"), options, function(error, connection
   };
  
   connection.baseChannelName = config.get("channelName");
-  connection.volume = 100;
+  connection.volume = 50;
   
   connection.authenticate('CyrcleBot');
   connection.on('initialized', function() {

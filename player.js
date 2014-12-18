@@ -85,9 +85,12 @@ module.exports = function(connection, inputStream) {
     if(this.playQueue.length > 0)
       this.play(this.playQueue.shift());
   };
+  this.setVolume = function(volume) {
+    connection.volume = volume;
+  };
   this.updateNowPlaying = function() {
     var info = this.currentStream.info;
-    connection.updateChannelName(connection.baseChannelName + " - " + info.title + " " + this.generateProgressBar(10));
+    connection.updateChannelName(connection.baseChannelName + " " + info.title + " v:" + connection.volume + " " + this.generateProgressBar(10));
   };
   this.generateProgressBar = function(size) {
     var progress = (Date.now() - this.lastPlayStart) / (this.currentStream.info.length_seconds * 1000);

@@ -13,6 +13,17 @@ module.exports = function(connection, inputStream) {
     if(msg == "skip") {
       player.next();
     }
+    if(msg.indexOf("vol") === 0) {
+      var newNum = msg.split(/volume|vol/)[1];
+      console.log(msg.split(/volume|vol/));
+      if(newNum) {
+        var vol = parseInt(newNum);
+        console.log(vol);
+        if(!isNaN(vol) && vol > 0 && vol < 101) {
+          player.setVolume(vol);
+        }
+      }
+    }
   };
   return MessageHandler;
 };

@@ -30,7 +30,12 @@ mumble.connect( config.get("serverAddress"), options, function(error, connection
   var outputStream;
 
   var MessageHandler;
-  
+  connection.updateChannelName = function(new_name) {
+    this.sendMessage('ChannelState', {channelId: this.currentChannelId, name: new_name.replace(/([^\w _()\[\]\{\}\=\@\#\-\!\?\+])*/g, "")});
+  };
+ 
+  connection.baseChannelName = config.get("channelName");
+  connection.volume = 100;
   
   connection.authenticate('CyrcleBot');
   connection.on('initialized', function() {
@@ -38,12 +43,31 @@ mumble.connect( config.get("serverAddress"), options, function(error, connection
     inputStream = connection.inputStream();
     outputStream = connection.outputStream();
     MessageHandler = require('./messageHandler')(connection, inputStream);
+    joinChannel(connection, findChannelByPrefix(connection,config.get("channelName")));
   });
   connection.on('protocol-in', function(data) {
-    if(data.type != "Ping")
+    if(data.type != "Ping" && data.type != "PermissionDenied")
       console.log('event: ', data.type, 'data', data.message);
     if(data.type == "TextMessage") {
       MessageHandler(data);
     }
+    if(data.type == "ChannelState") {
+    }
   });
 });
+function findChannelByPrefix(connection, prefix) {
+  for(var i in connection.channels) {
+    var chan = connection.channels[i];
+    if(chan.name && chan.name.indexOf(prefix) === 0)
+      return chan;
+  }
+  return null;
+}
+function joinChannel(connection, channel) {
+  connection.sendMessage( 'UserState', 
+    {session: connection.sessionId,
+    actor: connection.sessionId,
+    channelId: channel.channelId});
+  connection.currentChannelId = channel.channelId;
+}
+

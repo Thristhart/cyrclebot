@@ -5,6 +5,7 @@ module.exports = function(connection, inputStream) {
   this.currentStream = null;
   this.ffmpegInstance = null;
   this.Transformer = null;
+  this.lastPlayStart = Date.now();
   this.addToQueue = function(url) {
     if(this.playQueue.length === 0 && !this.currentStream) // nothing in queue or playing
       this.play(url);
@@ -25,8 +26,13 @@ module.exports = function(connection, inputStream) {
           return format.type.indexOf("audio") != -1;
         }
       });
+      youtubeStream.on('format', function(ev) {
+        console.log("Format found: ", ev);
+      });
+      youtubeStream.info = info;
       this.stop();
       this.currentStream = youtubeStream;
+      this.updateNowPlaying();
       this.ffmpegInstance = ffmpeg()
         .input(youtubeStream)
         .format("s16le") // signed little endian 16-bit
@@ -36,6 +42,10 @@ module.exports = function(connection, inputStream) {
           if(err.message.indexOf("SIGKILL") == -1)
             console.log("ffmpeg error: " + err.message);
         })
+        .on('start', function() {
+          console.log("ffmpeg start");
+          this.lastPlayStart = Date.now();
+        }.bind(this))
         .on('end', function() {
           this.ffmpegInstance = null;
         }.bind(this));
@@ -67,6 +77,7 @@ module.exports = function(connection, inputStream) {
       this.Transformer.stopped = true;
       this.Transformer = null;
     }
+    connection.updateChannelName(connection.baseChannelName);
   };
   this.next = function() {
     if(this.currentStream)
@@ -74,4 +85,25 @@ module.exports = function(connection, inputStream) {
     if(this.playQueue.length > 0)
       this.play(this.playQueue.shift());
   };
+  this.updateNowPlaying = function() {
+    var info = this.currentStream.info;
+    connection.updateChannelName(connection.baseChannelName + " - " + info.title + " " + this.generateProgressBar(10));
+  };
+  this.generateProgressBar = function(size) {
+    var progress = (Date.now() - this.lastPlayStart) / (this.currentStream.info.length_seconds * 1000);
+    var beforeCount = Math.round(size * progress);
+    var afterCount = size - beforeCount;
+    afterCount--;
+    var display = "";
+    for(var i = 0; i < beforeCount; i++)
+      display += "-";
+    display += "O";
+    for(i = 0; i < afterCount; i++)
+      display += "-";
+    return display;
+  };
+  setInterval(function() {
+    if(this.currentStream)
+      this.updateNowPlaying();
+  }.bind(this), 1000);
 };

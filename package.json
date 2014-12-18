@@ -26,5 +26,8 @@
     "mumble": "0.0.2",
     "nconf": "^0.7.1",
     "ytdl-core": "^0.2.4"
+  },
+  "devDependencies": {
+    "segfault-handler": "^0.2.4"
   }
 }

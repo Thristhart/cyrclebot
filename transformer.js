@@ -6,21 +6,21 @@ module.exports = function(connection) {
     for(var i = 0; i < chunk.length; i += connection.packetBuffer.length)
     {
       part = chunk.slice(i, i + connection.packetBuffer.length);
-      //this.push(part);
       this.push(transform(part, applyVolume));
     }
     next();
   };
+  function transform(buffer, func) {
+    var newBuff = new Buffer(buffer.length);
+    for(var i = 0; i < buffer.length; i+=2) {
+      var integer = buffer.readInt16LE(i);
+      newBuff.writeInt16LE(func(integer), i);
+    }
+    return newBuff;
+  }
+  function applyVolume(integer) {
+    return Math.round(integer / (20 * connection.volume / 100));
+  }
   return Transformer;
 };
-function transform(buffer, func) {
-  var newBuff = new Buffer(buffer.length);
-  for(var i = 0; i < buffer.length; i+=2) {
-    var integer = buffer.readInt16LE(i);
-    newBuff.writeInt16LE(func(integer), i);
-  }
-  return newBuff;
-}
-function applyVolume(integer) {
-  return Math.round(integer / 10);
-}
+

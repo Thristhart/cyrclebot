@@ -7,6 +7,12 @@ module.exports = function(connection, inputStream) {
     if(youtubeID) {
       player.addToQueue("https://youtube.com/watch?v=" + youtubeID);
     }
+    if(msg == "stop") {
+      player.stop();
+    }
+    if(msg == "skip") {
+      player.next();
+    }
   };
   return MessageHandler;
 };

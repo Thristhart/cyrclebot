@@ -1,4 +1,6 @@
 var config = require('nconf');
+var SegfaultHandler = require('segfault-handler');
+SegfaultHandler.registerHandler();
 
 config.argv().env().file({file:'config.json'});
 config.defaults({
@@ -31,7 +33,7 @@ mumble.connect( config.get("serverAddress"), options, function(error, connection
 
   var MessageHandler;
   connection.updateChannelName = function(new_name) {
-    this.sendMessage('ChannelState', {channelId: this.currentChannelId, name: new_name.replace(/([^\w _()\[\]\{\}\=\@\#\-\!\?\+])*/g, "")});
+    this.sendMessage('ChannelState', {channelId: this.currentChannelId, name: new_name.replace(/([^\w\W])+/g, "")});
   };
  
   connection.baseChannelName = config.get("channelName");

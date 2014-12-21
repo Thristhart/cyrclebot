@@ -7,8 +7,17 @@ module.exports = function(connection, inputStream) {
     if(youtubeID) {
       player.addToQueue("https://youtube.com/watch?v=" + youtubeID);
     }
+    else {
+      var youtubePlaylistID = ytPlaylistId(msg);
+      if(youtubePlaylistID) {
+        player.addPlaylistToQueue(youtubePlaylistId);
+      }
+    }
     if(msg == "stop") {
       player.stop();
+    }
+    if(msg == "play" && !player.currentStream) {
+      player.next();
     }
     if(msg == "skip") {
       player.next();
@@ -37,4 +46,8 @@ module.exports = function(connection, inputStream) {
 function ytVidId(url) {
   var p = /(?:https?:\/\/)?(?:www\.)?(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))((\w|-){11})(?:\S+)?/;
   return (url.match(p)) ? RegExp.$1 : false;
+}
+function ytPlaylistId(url) {
+  var p = /^.*(youtu.be\/|list=)([^#\&\?]*).*/;
+  return (url.match(p)) ? RegExp.$2 : false;
 }

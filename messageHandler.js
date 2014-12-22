@@ -5,12 +5,12 @@ module.exports = function(connection, inputStream) {
     var msg = data.message.message;
     var youtubeID = ytVidId(msg);
     if(youtubeID) {
-      player.addToQueue("https://youtube.com/watch?v=" + youtubeID);
+      player.addToQueue(youtubeID);
     }
     else {
       var youtubePlaylistID = ytPlaylistId(msg);
       if(youtubePlaylistID) {
-        player.addPlaylistToQueue(youtubePlaylistId);
+        player.addPlaylistToQueue(youtubePlaylistID);
       }
     }
     if(msg == "stop") {
@@ -21,6 +21,9 @@ module.exports = function(connection, inputStream) {
     }
     if(msg == "skip") {
       player.next();
+    }
+    if(msg == "shuffle") {
+      player.shuffle();
     }
     if(msg.indexOf("vol") === 0) {
       var newNum = msg.split(/volume|vol/)[1];
@@ -48,6 +51,6 @@ function ytVidId(url) {
   return (url.match(p)) ? RegExp.$1 : false;
 }
 function ytPlaylistId(url) {
-  var p = /^.*(youtu.be\/|list=)([^#\&\?]*).*/;
+  var p = /^.*(youtu.be\/|list=)([^#\&\?<]*)/;
   return (url.match(p)) ? RegExp.$2 : false;
 }

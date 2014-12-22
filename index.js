@@ -1,11 +1,6 @@
-var config = require('nconf');
+var config = require('./config');
 var SegfaultHandler = require('segfault-handler');
 SegfaultHandler.registerHandler();
-
-config.argv().env().file({file:'config.json'});
-config.defaults({
-  username: "CyrcleBot"
-});
 
 var mumble = require('mumble');
 var fs = require('fs');

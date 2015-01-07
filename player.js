@@ -135,11 +135,12 @@ module.exports = function(connection, inputStream) {
 };
 // bog standard in-place fisher-yates shuffle
 function shuffle(arr) {
-  for(var i = arr.length - 1; i > 0; i--) {
-    var randIndex = Math.floor(Math.random() * (i+1));
-    var copy = arr[i];
-    arr[i] = arr[randIndex];
-    arr[randIndex] = copy;
+  var target = arr.length - 1;
+  while(target > 0) {
+    var randIndex = Math.floor(Math.random() * target--);
+    var copy = arr[target];
+    arr[target] = arr[randIndex];
+    arr[target] = copy;
   }
   return arr;
 }

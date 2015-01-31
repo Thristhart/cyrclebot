@@ -1,9 +1,25 @@
 module.exports = function(connection) {
   var Transformer = require('stream').Transform();
+  Transformer.progress = 0;
   Transformer._transform = function(chunk, enc, next) {
+    var offset = 0;
+    if(Transformer.skipTo && Transformer.skipProgress < Transformer.skipTo) {
+      if(Transformer.skipProgress + chunk.length < Transformer.skipTo) {
+        Transformer.skipProgress += chunk.length;
+        Transformer.progress += chunk.length;
+        next();
+        return;
+      }
+      offset = Transformer.skipTo - Transformer.skipProgress;
+      Transformer.skipProgress += offset;
+      Transformer.progress += offset;
+    }
+    else {
+      Transformer.progress += chunk.length;
+    }
     var data = new Buffer(chunk.length);
     var part;
-    for(var i = 0; i < chunk.length; i += connection.packetBuffer.length)
+    for(var i = offset; i < chunk.length; i += connection.packetBuffer.length)
     {
       part = chunk.slice(i, i + connection.packetBuffer.length);
       this.push(transform(part, applyVolume));

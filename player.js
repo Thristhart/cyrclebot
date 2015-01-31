@@ -1,6 +1,10 @@
 var config = require('./config');
 var ytdl = require('ytdl-core');
 var Youtube = require('youtube-api');
+
+var redis = require('redis');
+var client = redis.createClient(config.get("redisOpts"));
+
 Youtube.authenticate({
   type: "key",
   key: config.get("youtubeKey")
@@ -14,10 +18,14 @@ module.exports = function(connection, inputStream) {
   this.lastPlayStart = Date.now();
   this.addToQueue = function(id) {
     var url = "https://youtube.com/watch?v=" + id;
-    if(this.playQueue.length === 0 && !(this.playing || this.currentStream)) // nothing in queue or playing
+    if(this.playQueue.length === 0 && !(this.playing || this.currentStream)) {
+      // nothing in queue or playing
       this.play(url);
-    else
+    }
+    else {
       this.playQueue.push(url);
+      client.rpush("cyrclebot:playQueue", url);
+    }
   };
   this.addPlaylistToQueue = function(plId) {
     console.log(plId);
@@ -30,23 +38,27 @@ module.exports = function(connection, inputStream) {
       }
     }.bind(this));
   };
-  this.play = function(url) {
+  this.play = function(url, startBytes, progress) {
     console.log("Playing url: " + url);
     this.playing = true;
-    ytdl.getInfo(url, {downloadURL: true}, function(err, info) {
+    client.set("cyrclebot:nowPlaying", url);
+    client.sadd("cyrclebot:playHistory", url);
+    var opts = {};
+    opts.downloadURL = true;
+    ytdl.getInfo(url, opts, function(err, info) {
       if(err) {
         console.log("Youtube error: " + err);
         return;
       }
       console.log("Downloaded youtube info for " + info.title + ", now creating stream...");
       var youtubeStream = ytdl.downloadFromInfo(info, {
-        filter: function(format) {
-          // do all youtube videos have audio format?
-          return format.type.indexOf("audio") != -1;
-        }
+        filter: "audio"
       });
       youtubeStream.on('format', function(ev) {
         console.log("Format found: ", ev);
+        youtubeStream.byteSize = ev.size;
+        client.set("cyrclebot:byteSize", ev.size);
+        client.set("cyrclebot:songLength", youtubeStream.info.length_seconds);
       });
       youtubeStream.info = info;
       this.stop();
@@ -64,11 +76,16 @@ module.exports = function(connection, inputStream) {
         .on('start', function() {
           console.log("ffmpeg start");
           this.lastPlayStart = Date.now();
+          if(startBytes) {
+            this.lastPlayStart -= progress * youtubeStream.info.length_seconds * 1000;
+          }
         }.bind(this))
         .on('end', function() {
           this.ffmpegInstance = null;
         }.bind(this));
       this.Transformer = require('./transformer')(connection);
+      this.Transformer.skipTo = startBytes;
+      this.Transformer.skipProgress = 0;
       // end: false ensures that inputStream stays open
       this.ffmpegInstance
         .pipe(this.Transformer)
@@ -99,24 +116,46 @@ module.exports = function(connection, inputStream) {
       this.Transformer.stopped = true;
       this.Transformer = null;
     }
+    client.del("cyrclebot:progress");
     this.playing = false;
     connection.updateChannelName(connection.baseChannelName + " volume:" + connection.volume + "/100 | " + this.playQueue.length + " in queue");
   };
   this.next = function() {
     if(this.currentStream || this.playing)
       this.stop();
-    if(this.playQueue.length > 0)
+    if(this.playQueue.length > 0) {
       this.play(this.playQueue.shift());
+      client.lpop("cyrclebot:playQueue");
+    }
+  };
+  this.resume = function() {
+    client.mget(
+          ["cyrclebot:progress",
+          "cyrclebot:nowPlaying",
+          "cyrclebot:byteProgress"],
+    function(err, values) {
+      var progress = parseFloat(values[0]);
+      var url = values[1];
+      var byteStart = parseInt(values[2]);
+      this.play(url, byteStart, progress);
+    }.bind(this));
   };
   this.setVolume = function(volume) {
     connection.volume = volume;
+    client.set("cyrclebot:volume", volume);
   };
   this.updateNowPlaying = function() {
     var info = this.currentStream.info;
+    client.set("cyrclebot:nowPlayingTitle", info.title);
     connection.updateChannelName(connection.baseChannelName + " " + info.title + " vol:" + connection.volume + "/100 | " + this.playQueue.length + " in queue " + this.generateProgressBar(10));
   };
   this.generateProgressBar = function(size) {
     var progress = (Date.now() - this.lastPlayStart) / (this.currentStream.info.length_seconds * 1000);
+    client.set("cyrclebot:progress", progress);
+    client.set("cyrclebot:nowPlayingLength", this.currentStream.info.length_seconds);
+    if(this.Transformer) {
+      client.set("cyrclebot:byteProgress", this.Transformer.progress);
+    }
     var beforeCount = Math.round(size * progress);
     var afterCount = size - beforeCount;
     afterCount--;
@@ -128,6 +167,17 @@ module.exports = function(connection, inputStream) {
       display += "-";
     return display;
   };
+  client.get("cyrclebot:progress", function(err, progress) {
+    progress = parseFloat(progress);
+    if(!isNaN(progress) && progress < 0.95)
+      this.resume();
+  }.bind(this));
+  client.lrange("cyrclebot:playQueue", 0, -1, function(err, queue) {
+    this.playQueue = queue;
+  }.bind(this));
+  client.get("cyrclebot:volume", function(err, vol) {
+    connection.volume = parseInt(vol);
+  }.bind(this));
   setInterval(function() {
     if(this.currentStream)
       this.updateNowPlaying();

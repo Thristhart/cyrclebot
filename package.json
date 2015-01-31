@@ -24,9 +24,10 @@
   "dependencies": {
     "fluent-ffmpeg": "^2.0.0-rc3",
     "mumble": "0.0.2",
-    "nconf": "^0.7.1",
-    "youtube-api": "^0.3.2",
-    "ytdl-core": "^0.2.4"
+    "nconf": "^0.7",
+    "redis": "^0.12",
+    "youtube-api": "^0.3",
+    "ytdl-core": "^0.4"
   },
   "devDependencies": {
     "segfault-handler": "^0.2.4"

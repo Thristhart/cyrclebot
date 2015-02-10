@@ -35,7 +35,9 @@ module.exports = function(connection) {
     return newBuff;
   }
   function applyVolume(integer) {
-    var val = Math.round(integer / (20 * (101 - connection.volume) / 100));
+    var val = integer / 20;
+    val *= 50/(101 - connection.volume);
+    val = Math.round(val);
     if(val > 32767)
       val = 32767;
     if(val < -32767)

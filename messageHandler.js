@@ -1,5 +1,8 @@
 var Player = require('./player');
 var config = require('./config');
+var request = require('request');
+var html_strip = require('htmlstrip-native').html_strip;
+
 module.exports = function(connection, inputStream) {
   var redis = require('redis');
   var client = redis.createClient(config.get("redisOpts"));
@@ -10,7 +13,7 @@ module.exports = function(connection, inputStream) {
   });
   var player = new Player(connection, inputStream);
   var MessageHandler = function(data) {
-    var msg = data.message.message;
+    var msg = html_strip(data.message.message);
     var youtubeID = ytVidId(msg);
     if(youtubeID) {
       player.addToQueue(youtubeID);
@@ -20,6 +23,36 @@ module.exports = function(connection, inputStream) {
       if(youtubePlaylistID) {
         player.addPlaylistToQueue(youtubePlaylistID);
       }
+      else { // not a youtube url, maybe it's a raw content file?
+        request.head(msg, function(error, response, body) {
+          if(error) {
+            console.log("Got error from attempt to identify via HEAD: %o", error);
+            console.log("Couldn't identify a contentType for url, no faucet assigned");
+            return;
+          }
+          console.log("Got HEAD response: %o", response.headers);
+          var type = response.headers["content-type"];
+          switch(type) {
+            case "video/mp4":
+            case "video/webm":
+            case "video/ogg":
+            case "application/ogg":
+            case "audio/mpeg":
+            case "audio/webm":
+            case "audio/ogg":
+            case "audio/wave":
+            case "audio/wav":
+            case "audio/x-wav":
+            case "audio/x-pn-wav":
+            case "\"application/octet-stream\";": // newgrounds identifies mp3s with this
+              console.log("Identified content type of %s", type);
+              player.addArbitraryMedia(msg);
+              break;
+            default:
+              console.log("Got a contentType we don't know, returning null (%s)", type);
+          }
+        });
+      };
     }
     if(msg == "stop") {
       player.stop();

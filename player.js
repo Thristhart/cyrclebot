@@ -1,11 +1,14 @@
 var config = require('./config');
 var ytdl = require('ytdl-core');
 var Youtube = require('youtube-api');
+var urlLib = require('url');
+var path = require('path');
 
 var redis = require('redis');
 var client = redis.createClient(config.get("redisOpts"));
 
 var textToWave = require("text2wave");
+var request = require("request");
 
 Youtube.authenticate({
   type: "key",
@@ -20,6 +23,9 @@ module.exports = function(connection, inputStream) {
   this.lastPlayStart = Date.now();
   this.addToQueue = function(id) {
     var url = "https://youtube.com/watch?v=" + id;
+    this.addArbitraryMedia(url);
+  };
+  this.addArbitraryMedia = function(url) {
     if(this.playQueue.length === 0 && !(this.playing || this.currentStream)) {
       // nothing in queue or playing
       this.play(url);
@@ -67,6 +73,63 @@ module.exports = function(connection, inputStream) {
     this.playing = true;
     client.set("cyrclebot:nowPlaying", url);
     client.sadd("cyrclebot:playHistory", url);
+    if(url.indexOf("https://youtube.com") != -1) {
+      this.playYoutube(url, startBytes, progress);
+    }
+    else {
+      this.currentStream = request(url);
+      this.currentStream.info = {};
+      this.currentStream.info.title = path.basename(urlLib.parse(url).path);
+      this.currentStream.info.length_seconds = 1000;
+      this.currentStream.on("response", function(response) {
+        var disposition = response.headers["content-disposition"];
+        var filenameRegex = /filename="(.*?)"/;
+        var match = filenameRegex.exec(disposition);
+        if(match && match[1]) {
+          this.currentStream.info.title = match[1];
+        }
+      }.bind(this));
+      this.ffmpegInstance = ffmpeg()
+        .input(this.currentStream)
+        .format("s16le") // signed little endian 16-bit
+        .outputOptions(["-ar " + connection.SAMPLING_RATE, "-ac 1"]) // 24000 sample rate, 1 channel
+        .audioCodec('pcm_s16le')
+        .on('error', function(err, stdout, stderr) {
+          if(err.message.indexOf("SIGKILL") == -1)
+            console.log("ffmpeg error: " + err.message);
+        })
+        .on('start', function() {
+          console.log("ffmpeg start");
+          this.lastPlayStart = Date.now();
+        }.bind(this))
+        .on('codecData', function(data) {
+          console.log("codec data ", data);
+          this.currentStream.info.length_seconds = data.duration;
+          if(startBytes) {
+            this.lastPlayStart -= progress * data.duration * 1000;
+          }
+        })
+        .on('end', function() {
+          this.ffmpegInstance = null;
+        }.bind(this));
+      this.Transformer = require('./transformer')(connection);
+      this.Transformer.skipTo = startBytes;
+      this.Transformer.skipProgress = 0;
+      // end: false ensures that inputStream stays open
+      this.ffmpegInstance
+        .pipe(this.Transformer)
+        .pipe(inputStream, {end: false});
+      // Once the song ends, if it just ran out, move to next song
+      // otherwise, we've been stopped manually and should do nothing
+      this.Transformer.once('end', function() {
+        console.log("Transformer ended");
+        if(!this.Transformer.stopped)
+          this.next();
+      }.bind(this));
+
+    }
+  };
+  this.playYoutube = function(url, startBytes, progress) {
     var opts = {};
     opts.downloadURL = true;
     ytdl.getInfo(url, opts, function(err, info) {
@@ -128,7 +191,10 @@ module.exports = function(connection, inputStream) {
   };
   this.stop = function() {
     if(this.currentStream) {
-      this.currentStream.unpipe();
+      if(this.currentStream.unpipe)
+        this.currentStream.unpipe();
+      if(this.currentStream.end)
+        this.currentStream.end();
       this.currentStream = null;
     }
     if(this.ffmpegInstance) {

@@ -1,5 +1,13 @@
 var Player = require('./player');
+var config = require('./config');
 module.exports = function(connection, inputStream) {
+  var redis = require('redis');
+  var client = redis.createClient(config.get("redisOpts"));
+  client.subscribe("cyrclebot:commands", function() {
+    client.on("message", function(channel, command) {
+      MessageHandler({message: {message: command}});
+    });
+  });
   var player = new Player(connection, inputStream);
   var MessageHandler = function(data) {
     var msg = data.message.message;
@@ -22,7 +30,11 @@ module.exports = function(connection, inputStream) {
     if(msg == "skip") {
       player.next();
     }
+    if(msg == "clear") {
+      player.clearQueue();
+    }
     if(msg == "shuffle") {
+      console.log("Shuffle");
       player.shuffle();
     }
     if(msg.indexOf("say") === 0) {

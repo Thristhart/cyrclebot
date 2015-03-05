@@ -1,6 +1,4 @@
 var config = require('./config');
-var SegfaultHandler = require('segfault-handler');
-SegfaultHandler.registerHandler();
 
 var mumble = require('mumble');
 var fs = require('fs');
@@ -40,7 +38,6 @@ mumble.connect( config.get("serverAddress"), options, function(error, connection
     inputStream = connection.inputStream();
     outputStream = connection.outputStream();
     MessageHandler = require('./messageHandler')(connection, inputStream);
-    joinChannel(connection, findChannelByPrefix(connection,config.get("channelName")));
   });
   connection.on('protocol-in', function(data) {
     if(data.type != "Ping" && data.type != "PermissionDenied")
@@ -49,6 +46,9 @@ mumble.connect( config.get("serverAddress"), options, function(error, connection
       MessageHandler(data);
     }
     if(data.type == "ChannelState") {
+    }
+    if(data.type == "ServerConfig") {
+      joinChannel(connection, findChannelByPrefix(connection,config.get("channelName")));
     }
   });
 });

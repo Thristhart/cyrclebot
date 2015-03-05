@@ -5,6 +5,8 @@ var Youtube = require('youtube-api');
 var redis = require('redis');
 var client = redis.createClient(config.get("redisOpts"));
 
+var textToWave = require("text2wave");
+
 Youtube.authenticate({
   type: "key",
   key: config.get("youtubeKey")
@@ -28,7 +30,6 @@ module.exports = function(connection, inputStream) {
     }
   };
   this.addPlaylistToQueue = function(plId) {
-    console.log(plId);
     Youtube.playlistItems.list({"part": "contentDetails", "maxResults": 50, "playlistId": plId},
     function(err, data) {
       if(err)
@@ -37,6 +38,29 @@ module.exports = function(connection, inputStream) {
         this.addToQueue(data.items[vid].contentDetails.videoId);
       }
     }.bind(this));
+  };
+  this.say = function(text) {
+    var tts = textToWave(text);
+    this.Transformer = require('./transformer')(connection);
+    this.Transformer.skipTo = 0;
+    this.ffmpegInstance = ffmpeg()
+      .input(tts)
+      .format("s16le") // signed little endian 16-bit
+      .outputOptions(["-ar " + connection.SAMPLING_RATE, "-ac 1"]) // 24000 sample rate, 1 channel
+      .audioCodec('pcm_s16le')
+      .on('error', function(err, stdout, stderr) {
+        if(err.message.indexOf("SIGKILL") == -1)
+          console.log("ffmpeg error: " + err.message);
+      })
+      .on('end', function() {
+        this.ffmpegInstance = null;
+      }.bind(this))
+      .pipe(this.Transformer)
+      .pipe(inputStream, {end: false});
+  };
+  this.clearQueue = function() {
+    this.playQueue = [];
+    client.del("cyrclebot:playQueue");
   };
   this.play = function(url, startBytes, progress) {
     console.log("Playing url: " + url);
@@ -177,6 +201,8 @@ module.exports = function(connection, inputStream) {
   }.bind(this));
   client.get("cyrclebot:volume", function(err, vol) {
     connection.volume = parseInt(vol);
+    if(isNaN(connection.volume))
+      connection.volume = 50;
   }.bind(this));
   setInterval(function() {
     if(this.currentStream)
@@ -190,7 +216,7 @@ function shuffle(arr) {
     var randIndex = Math.floor(Math.random() * target--);
     var copy = arr[target];
     arr[target] = arr[randIndex];
-    arr[target] = copy;
+    arr[randIndex] = copy;
   }
   return arr;
 }

@@ -25,6 +25,10 @@ module.exports = function(connection, inputStream) {
     if(msg == "shuffle") {
       player.shuffle();
     }
+    if(msg.indexOf("say") === 0) {
+      var line = msg.split("say")[1];
+      //player.say(line);
+    }
     if(msg.indexOf("vol") === 0) {
       var newNum = msg.split(/volume|vol/)[1];
       if(newNum) {

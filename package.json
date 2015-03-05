@@ -26,6 +26,7 @@
     "mumble": "0.0.2",
     "nconf": "^0.7",
     "redis": "^0.12",
+    "text2wave": "^1.0.0",
     "youtube-api": "^0.3",
     "ytdl-core": "^0.4"
   },

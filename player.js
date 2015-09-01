@@ -15,7 +15,7 @@ Youtube.authenticate({
   key: config.get("youtubeKey")
 });
 var ffmpeg = require('fluent-ffmpeg');
-module.exports = function(connection, inputStream) {
+module.exports = function(mumbleClient, inputStream) {
   this.playQueue = [];
   this.currentStream = null;
   this.ffmpegInstance = null;
@@ -47,12 +47,12 @@ module.exports = function(connection, inputStream) {
   };
   this.say = function(text) {
     var tts = textToWave(text);
-    this.Transformer = require('./transformer')(connection);
+    this.Transformer = require('./transformer')(mumbleClient);
     this.Transformer.skipTo = 0;
     this.ffmpegInstance = ffmpeg()
       .input(tts)
       .format("s16le") // signed little endian 16-bit
-      .outputOptions(["-ar " + connection.SAMPLING_RATE, "-ac 1"]) // 24000 sample rate, 1 channel
+      .outputOptions(["-ar " + mumbleClient.connection.SAMPLING_RATE, "-ac 1"]) // 24000 sample rate, 1 channel
       .audioCodec('pcm_s16le')
       .on('error', function(err, stdout, stderr) {
         if(err.message.indexOf("SIGKILL") == -1)
@@ -92,7 +92,7 @@ module.exports = function(connection, inputStream) {
       this.ffmpegInstance = ffmpeg()
         .input(this.currentStream)
         .format("s16le") // signed little endian 16-bit
-        .outputOptions(["-ar " + connection.SAMPLING_RATE, "-ac 1"]) // 24000 sample rate, 1 channel
+        .outputOptions(["-ar " + mumbleClient.connection.SAMPLING_RATE, "-ac 1"]) // 24000 sample rate, 1 channel
         .audioCodec('pcm_s16le')
         .on('error', function(err, stdout, stderr) {
           if(err.message.indexOf("SIGKILL") == -1)
@@ -111,8 +111,9 @@ module.exports = function(connection, inputStream) {
         })
         .on('end', function() {
           this.ffmpegInstance = null;
+          console.log("ffmpeg end");
         }.bind(this));
-      this.Transformer = require('./transformer')(connection);
+      this.Transformer = require('./transformer')(mumbleClient);
       this.Transformer.skipTo = startBytes;
       this.Transformer.skipProgress = 0;
       // end: false ensures that inputStream stays open
@@ -154,7 +155,7 @@ module.exports = function(connection, inputStream) {
       this.ffmpegInstance = ffmpeg()
         .input(youtubeStream)
         .format("s16le") // signed little endian 16-bit
-        .outputOptions(["-ar " + connection.SAMPLING_RATE, "-ac 1"]) // 24000 sample rate, 1 channel
+        .outputOptions(["-ar " + mumbleClient.connection.SAMPLING_RATE, "-ac 1"]) // 24000 sample rate, 1 channel
         .audioCodec('pcm_s16le')
         .on('error', function(err, stdout, stderr) {
           if(err.message.indexOf("SIGKILL") == -1)
@@ -170,7 +171,7 @@ module.exports = function(connection, inputStream) {
         .on('end', function() {
           this.ffmpegInstance = null;
         }.bind(this));
-      this.Transformer = require('./transformer')(connection);
+      this.Transformer = require('./transformer')(mumbleClient);
       this.Transformer.skipTo = startBytes;
       this.Transformer.skipProgress = 0;
       // end: false ensures that inputStream stays open
@@ -208,7 +209,7 @@ module.exports = function(connection, inputStream) {
     }
     client.del("cyrclebot:progress");
     this.playing = false;
-    connection.updateChannelName(connection.baseChannelName + " volume:" + connection.volume + "/100 | " + this.playQueue.length + " in queue");
+    mumbleClient.updateChannelName(mumbleClient.baseChannelName + " volume:" + mumbleClient.volume + "/100 | " + this.playQueue.length + " in queue");
   };
   this.next = function() {
     if(this.currentStream || this.playing)
@@ -231,13 +232,13 @@ module.exports = function(connection, inputStream) {
     }.bind(this));
   };
   this.setVolume = function(volume) {
-    connection.volume = volume;
+    mumbleClient.volume = volume;
     client.set("cyrclebot:volume", volume);
   };
   this.updateNowPlaying = function() {
     var info = this.currentStream.info;
     client.set("cyrclebot:nowPlayingTitle", info.title);
-    connection.updateChannelName(connection.baseChannelName + " " + info.title + " vol:" + connection.volume + "/100 | " + this.playQueue.length + " in queue " + this.generateProgressBar(10));
+    mumbleClient.updateChannelName(mumbleClient.baseChannelName + " " + info.title + " vol:" + mumbleClient.volume + "/100 | " + this.playQueue.length + " in queue " + this.generateProgressBar(10));
   };
   this.generateProgressBar = function(size) {
     var progress = (Date.now() - this.lastPlayStart) / (this.currentStream.info.length_seconds * 1000);
@@ -266,9 +267,9 @@ module.exports = function(connection, inputStream) {
     this.playQueue = queue;
   }.bind(this));
   client.get("cyrclebot:volume", function(err, vol) {
-    connection.volume = parseInt(vol);
-    if(isNaN(connection.volume))
-      connection.volume = 50;
+    mumbleClient.volume = parseInt(vol);
+    if(isNaN(mumbleClient.volume))
+      mumbleClient.volume = 50;
   }.bind(this));
   setInterval(function() {
     if(this.currentStream)

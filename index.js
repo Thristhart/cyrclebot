@@ -14,7 +14,7 @@ if( !config.get("serverAddress") )
   throw new Error("Must have config option serverAddress");
 
 
-mumble.connect( config.get("serverAddress"), options, function(error, connection) {
+mumble.connect( config.get("serverAddress"), options, function(error, mumbleClient) {
   if(error) {
     throw new Error(error);
   }
@@ -25,21 +25,21 @@ mumble.connect( config.get("serverAddress"), options, function(error, connection
   var outputStream;
 
   var MessageHandler;
-  connection.updateChannelName = function(new_name) {
-    this.sendMessage('ChannelState', {channelId: this.currentChannelId, name: new_name.replace(/([^\w\W])+/g, "")});
+  mumbleClient.updateChannelName = function(new_name) {
+    this.connection.sendMessage('ChannelState', {channel_id: this.user.channel.id, name: new_name.replace(/([^\w\W])+/g, "")});
   };
  
-  connection.baseChannelName = config.get("channelName");
-  connection.volume = 50;
+  mumbleClient.baseChannelName = config.get("channelName");
+  mumbleClient.volume = 50;
   
-  connection.authenticate('CyrcleBot');
-  connection.on('initialized', function() {
+  mumbleClient.authenticate('CyrcleBot');
+  mumbleClient.on('initialized', function() {
     console.log("Init success");
-    inputStream = connection.inputStream();
-    outputStream = connection.outputStream();
-    MessageHandler = require('./messageHandler')(connection, inputStream);
+    inputStream = mumbleClient.inputStream();
+    outputStream = mumbleClient.outputStream();
+    MessageHandler = require('./messageHandler')(mumbleClient, inputStream);
   });
-  connection.on('protocol-in', function(data) {
+  mumbleClient.on('protocol-in', function(data) {
     if(data.type != "Ping" && data.type != "PermissionDenied")
       console.log('event: ', data.type, 'data', data.message);
     if(data.type == "TextMessage") {
@@ -48,23 +48,24 @@ mumble.connect( config.get("serverAddress"), options, function(error, connection
     if(data.type == "ChannelState") {
     }
     if(data.type == "ServerConfig") {
-      joinChannel(connection, findChannelByPrefix(connection,config.get("channelName")));
+      joinChannel(mumbleClient, findChannelByPrefix(mumbleClient,config.get("channelName")));
     }
   });
+  mumbleClient.on('error', function(data) {
+    console.log("MUMBLE ERROR", data);
+  });
 });
-function findChannelByPrefix(connection, prefix) {
-  for(var i in connection.channels) {
-    var chan = connection.channels[i];
-    if(chan.name && chan.name.indexOf(prefix) === 0)
+function findChannelByPrefix(mumbleClient, prefix) {
+  for(var i in mumbleClient._channels) {
+    var chan = mumbleClient._channels[i];
+    if(chan.name && chan.name.indexOf(prefix) === 0) {
       return chan;
+    }
   }
   return null;
 }
-function joinChannel(connection, channel) {
-  connection.sendMessage( 'UserState', 
-    {session: connection.sessionId,
-    actor: connection.sessionId,
-    channelId: channel.channelId});
-  connection.currentChannelId = channel.channelId;
+function joinChannel(mumbleClient, channel) {
+  channel.join();
+  mumbleClient.currentChannelId = channel.id;
 }
 

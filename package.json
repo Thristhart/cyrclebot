@@ -24,7 +24,7 @@
   "dependencies": {
     "fluent-ffmpeg": "^2.0.0-rc3",
     "htmlstrip-native": "^0.1.0",
-    "mumble": "0.0.2",
+    "mumble": "^0.3.3",
     "nconf": "^0.7",
     "redis": "^0.12",
     "request": "^2.53.0",

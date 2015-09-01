@@ -1,4 +1,5 @@
-module.exports = function(connection) {
+module.exports = function(mumbleClient) {
+  var connection = mumbleClient.connection;
   var Transformer = require('stream').Transform();
   Transformer.progress = 0;
   Transformer._transform = function(chunk, enc, next) {
@@ -35,14 +36,8 @@ module.exports = function(connection) {
     return newBuff;
   }
   function applyVolume(integer) {
-    var val = integer / 20;
-    val *= 50/(101 - connection.volume);
-    val = Math.round(val);
-    if(val > 32767)
-      val = 32767;
-    if(val < -32767)
-      val = -32767;
-    return val;
+    var volumeFactor = (mumbleClient.volume)/100;
+    return Math.round(integer * volumeFactor);
   }
   return Transformer;
 };

@@ -10,6 +10,10 @@ var client = redis.createClient(config.get("redisOpts"));
 var textToWave = require("text2wave");
 var request = require("request");
 
+var Transformer = require('./transformer');
+
+var Mixer = require('./pcmMixer');
+
 Youtube.authenticate({
   type: "key",
   key: config.get("youtubeKey")
@@ -17,16 +21,15 @@ Youtube.authenticate({
 var ffmpeg = require('fluent-ffmpeg');
 module.exports = function(mumbleClient, inputStream) {
   this.playQueue = [];
-  this.currentStream = null;
+  this.streams = [];
   this.ffmpegInstance = null;
-  this.Transformer = null;
   this.lastPlayStart = Date.now();
   this.addToQueue = function(id) {
     var url = "https://youtube.com/watch?v=" + id;
     this.addArbitraryMedia(url);
   };
-  this.addArbitraryMedia = function(url) {
-    if(this.playQueue.length === 0 && !(this.playing || this.currentStream)) {
+  this.addArbitraryMedia = function(url, simul) {
+    if((this.playQueue.length === 0 && !(this.playing || this.streams.length > 0)) || simul) {
       // nothing in queue or playing
       this.play(url);
     }
@@ -45,7 +48,46 @@ module.exports = function(mumbleClient, inputStream) {
       }
     }.bind(this));
   };
+  this.playStream = function(stream, startBytes, progress) {
+    this.stop();
+    this.streams.push(stream);
+    this.updateNowPlaying();
+    stream.ffmpegInstance = ffmpeg()
+      .input(stream)
+      .format("s16le") // signed little endian 16-bit
+      .outputOptions(["-ar " + mumbleClient.connection.SAMPLING_RATE, "-ac 1"]) // 24000 sample rate, 1 channel
+      .audioCodec('pcm_s16le')
+      .on('error', function(err, stdout, stderr) {
+        if(err.message.indexOf("SIGKILL") == -1)
+          console.log("ffmpeg error: " + err.message);
+      })
+      .on('start', function() {
+        console.log("ffmpeg start");
+        this.lastPlayStart = Date.now();
+        if(startBytes) {
+          this.lastPlayStart -= progress * stream.info.length_seconds * 1000;
+        }
+      }.bind(this))
+      .on('end', function() {
+        stream.ffmpegInstance = null;
+      }.bind(this));
+    stream.Transformer = new Transformer({mumbleClient: mumbleClient});
+    stream.Transformer.skipTo = startBytes;
+    stream.Transformer.skipProgress = 0;
+    // end: false ensures that inputStream stays open
+    stream.ffmpegInstance
+      .pipe(stream.Transformer)
+      .pipe(inputStream, {end: false});
+    //this.mixer.addStream(stream.Transformer);
+    // Once the song ends, if it just ran out, move to next song
+    // otherwise, we've been stopped manually and should do nothing
+    stream.Transformer.once('end', function() {
+      console.log("Transformer ended, was stopped: ", stream.Transformer.stopped);
+      this.next();
+    }.bind(this));
+  };
   this.say = function(text) {
+    /*
     var tts = textToWave(text);
     this.Transformer = require('./transformer')(mumbleClient);
     this.Transformer.skipTo = 0;
@@ -63,6 +105,7 @@ module.exports = function(mumbleClient, inputStream) {
       }.bind(this))
       .pipe(this.Transformer)
       .pipe(inputStream, {end: false});
+      */
   };
   this.clearQueue = function() {
     this.playQueue = [];
@@ -77,57 +120,19 @@ module.exports = function(mumbleClient, inputStream) {
       this.playYoutube(url, startBytes, progress);
     }
     else {
-      this.currentStream = request(url);
-      this.currentStream.info = {};
-      this.currentStream.info.title = path.basename(urlLib.parse(url).path);
-      this.currentStream.info.length_seconds = 1000;
-      this.currentStream.on("response", function(response) {
+      var requestStream = request(url);
+      requestStream.info = {};
+      requestStream.info.title = path.basename(urlLib.parse(url).path);
+      requestStream.info.length_seconds = 1000;
+      requestStream.on("response", function(response) {
         var disposition = response.headers["content-disposition"];
         var filenameRegex = /filename="(.*?)"/;
         var match = filenameRegex.exec(disposition);
         if(match && match[1]) {
-          this.currentStream.info.title = match[1];
+          requestStream.info.title = match[1];
         }
       }.bind(this));
-      this.ffmpegInstance = ffmpeg()
-        .input(this.currentStream)
-        .format("s16le") // signed little endian 16-bit
-        .outputOptions(["-ar " + mumbleClient.connection.SAMPLING_RATE, "-ac 1"]) // 24000 sample rate, 1 channel
-        .audioCodec('pcm_s16le')
-        .on('error', function(err, stdout, stderr) {
-          if(err.message.indexOf("SIGKILL") == -1)
-            console.log("ffmpeg error: " + err.message);
-        })
-        .on('start', function() {
-          console.log("ffmpeg start");
-          this.lastPlayStart = Date.now();
-        }.bind(this))
-        .on('codecData', function(data) {
-          console.log("codec data ", data);
-          this.currentStream.info.length_seconds = data.duration;
-          if(startBytes) {
-            this.lastPlayStart -= progress * data.duration * 1000;
-          }
-        })
-        .on('end', function() {
-          this.ffmpegInstance = null;
-          console.log("ffmpeg end");
-        }.bind(this));
-      this.Transformer = require('./transformer')(mumbleClient);
-      this.Transformer.skipTo = startBytes;
-      this.Transformer.skipProgress = 0;
-      // end: false ensures that inputStream stays open
-      this.ffmpegInstance
-        .pipe(this.Transformer)
-        .pipe(inputStream, {end: false});
-      // Once the song ends, if it just ran out, move to next song
-      // otherwise, we've been stopped manually and should do nothing
-      this.Transformer.once('end', function() {
-        console.log("Transformer ended");
-        if(!this.Transformer.stopped)
-          this.next();
-      }.bind(this));
-
+      this.playStream(requestStream, startBytes, progress);
     }
   };
   this.playYoutube = function(url, startBytes, progress) {
@@ -149,71 +154,41 @@ module.exports = function(mumbleClient, inputStream) {
         client.set("cyrclebot:songLength", youtubeStream.info.length_seconds);
       });
       youtubeStream.info = info;
-      this.stop();
-      this.currentStream = youtubeStream;
-      this.updateNowPlaying();
-      this.ffmpegInstance = ffmpeg()
-        .input(youtubeStream)
-        .format("s16le") // signed little endian 16-bit
-        .outputOptions(["-ar " + mumbleClient.connection.SAMPLING_RATE, "-ac 1"]) // 24000 sample rate, 1 channel
-        .audioCodec('pcm_s16le')
-        .on('error', function(err, stdout, stderr) {
-          if(err.message.indexOf("SIGKILL") == -1)
-            console.log("ffmpeg error: " + err.message);
-        })
-        .on('start', function() {
-          console.log("ffmpeg start");
-          this.lastPlayStart = Date.now();
-          if(startBytes) {
-            this.lastPlayStart -= progress * youtubeStream.info.length_seconds * 1000;
-          }
-        }.bind(this))
-        .on('end', function() {
-          this.ffmpegInstance = null;
-        }.bind(this));
-      this.Transformer = require('./transformer')(mumbleClient);
-      this.Transformer.skipTo = startBytes;
-      this.Transformer.skipProgress = 0;
-      // end: false ensures that inputStream stays open
-      this.ffmpegInstance
-        .pipe(this.Transformer)
-        .pipe(inputStream, {end: false});
-      // Once the song ends, if it just ran out, move to next song
-      // otherwise, we've been stopped manually and should do nothing
-      this.Transformer.once('end', function() {
-        console.log("Transformer ended");
-        if(!this.Transformer.stopped)
-          this.next();
-      }.bind(this));
+      this.playStream(youtubeStream, startBytes, progress);
     }.bind(this));
   };
   this.shuffle = function() {
     this.playQueue = shuffle(this.playQueue);
   };
+  this.stopStream = function(stream) {
+    if(stream.unpipe)
+      stream.unpipe();
+    if(stream.end)
+      stream.end();
+    if(stream.Transformer) {
+      stream.Transformer.unpipe();
+      stream.Transformer.stopped = true;
+      stream.Transformer = null;
+    }
+    if(stream.ffmpegInstance) {
+      stream.ffmpegInstance.kill();
+      stream.ffmpegInstance = null;
+    }
+  };
   this.stop = function() {
-    if(this.currentStream) {
-      if(this.currentStream.unpipe)
-        this.currentStream.unpipe();
-      if(this.currentStream.end)
-        this.currentStream.end();
-      this.currentStream = null;
-    }
-    if(this.ffmpegInstance) {
-      this.ffmpegInstance.kill();
-      this.ffmpegInstance = null;
-    }
-    if(this.Transformer) {
-      this.Transformer.unpipe();
-      this.Transformer.stopped = true;
-      this.Transformer = null;
+    console.log("Stop playing ", this.streams.length, " streams");
+    if(this.streams.length > 0) {
+      this.streams = this.streams.filter(this.stopStream);
     }
     client.del("cyrclebot:progress");
     this.playing = false;
     mumbleClient.updateChannelName(mumbleClient.baseChannelName + " volume:" + mumbleClient.volume + "/100 | " + this.playQueue.length + " in queue");
   };
   this.next = function() {
-    if(this.currentStream || this.playing)
+    console.log("Play next song");
+    if(this.streams.length > 0 || this.playing) {
       this.stop();
+    }
     if(this.playQueue.length > 0) {
       this.play(this.playQueue.shift());
       client.lpop("cyrclebot:playQueue");
@@ -236,16 +211,16 @@ module.exports = function(mumbleClient, inputStream) {
     client.set("cyrclebot:volume", volume);
   };
   this.updateNowPlaying = function() {
-    var info = this.currentStream.info;
+    var info = this.streams[0].info;
     client.set("cyrclebot:nowPlayingTitle", info.title);
     mumbleClient.updateChannelName(mumbleClient.baseChannelName + " " + info.title + " vol:" + mumbleClient.volume + "/100 | " + this.playQueue.length + " in queue " + this.generateProgressBar(10));
   };
   this.generateProgressBar = function(size) {
-    var progress = (Date.now() - this.lastPlayStart) / (this.currentStream.info.length_seconds * 1000);
+    var progress = (Date.now() - this.lastPlayStart) / (this.streams[0].info.length_seconds * 1000);
     client.set("cyrclebot:progress", progress);
-    client.set("cyrclebot:nowPlayingLength", this.currentStream.info.length_seconds);
-    if(this.Transformer) {
-      client.set("cyrclebot:byteProgress", this.Transformer.progress);
+    client.set("cyrclebot:nowPlayingLength", this.streams[0].info.length_seconds);
+    if(this.streams[0].Transformer) {
+      client.set("cyrclebot:byteProgress", this.streams[0].Transformer.progress);
     }
     var beforeCount = Math.round(size * progress);
     var afterCount = size - beforeCount;
@@ -272,7 +247,7 @@ module.exports = function(mumbleClient, inputStream) {
       mumbleClient.volume = 50;
   }.bind(this));
   setInterval(function() {
-    if(this.currentStream)
+    if(this.streams.length > 0)
       this.updateNowPlaying();
   }.bind(this), 1000);
 };

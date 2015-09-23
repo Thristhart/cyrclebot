@@ -40,8 +40,9 @@ mumble.connect( config.get("serverAddress"), options, function(error, mumbleClie
     MessageHandler = require('./messageHandler')(mumbleClient, inputStream);
   });
   mumbleClient.on('protocol-in', function(data) {
-    if(data.type != "Ping" && data.type != "PermissionDenied")
-      console.log('event: ', data.type, 'data', data.message);
+    if(data.type != "Ping" && data.type != "PermissionDenied") {
+
+    }
     if(data.type == "TextMessage") {
       MessageHandler(data);
     }
@@ -52,7 +53,6 @@ mumble.connect( config.get("serverAddress"), options, function(error, mumbleClie
     }
   });
   mumbleClient.on('error', function(data) {
-    console.log("MUMBLE ERROR", data);
   });
 });
 function findChannelByPrefix(mumbleClient, prefix) {

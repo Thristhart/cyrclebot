@@ -56,6 +56,12 @@ module.exports = function(connection, inputStream) {
           player.addPlaylistToQueue(youtubePlaylistID);
         }
         else { // not a youtube url, maybe it's a raw content file?
+          var simul = false;
+          /*
+          if(msg.indexOf("s ") === 0) {
+            simul = true;
+            msg = msg.split("s ")[1];
+          }*/
           request.head(msg, function(error, response, body) {
             if(error) {
               console.log("Got error from attempt to identify via HEAD: %o", error);
@@ -78,7 +84,7 @@ module.exports = function(connection, inputStream) {
               case "audio/x-pn-wav":
               case "\"application/octet-stream\";": // newgrounds identifies mp3s with this
                 console.log("Identified content type of %s", type);
-                player.addArbitraryMedia(msg);
+                player.addArbitraryMedia(msg, simul);
                 break;
               default:
                 console.log("Got a contentType we don't know, returning null (%s)", type);
